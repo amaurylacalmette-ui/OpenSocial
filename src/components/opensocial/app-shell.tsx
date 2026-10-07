@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useOS, type View } from '@/lib/store';
+import { PLATFORMS, type PlatformId } from '@/lib/platforms';
+import { toast } from '@/hooks/use-toast';
 import { LayoutDashboard, PenLine, CalendarClock, Zap, BarChart3, Sparkles, Link2, Settings, Menu, Plus, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
@@ -135,6 +137,29 @@ export function AppShell() {
     loadAll();
     loadKeys();
   }, [loadAll, loadKeys]);
+
+  // Returning from an OAuth authorization — toast the outcome, land on Accounts, clean the URL.
+  // The toast is deferred a beat: on first mount the Toaster sibling hasn't subscribed yet,
+  // so dispatching synchronously would lose the message.
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const oauth = sp.get('oauth');
+    if (!oauth) return;
+    const platform = sp.get('platform');
+    const name = platform && platform in PLATFORMS ? PLATFORMS[platform as keyof typeof PLATFORMS].name : 'Account';
+    const t = setTimeout(() => {
+      if (oauth === 'success') {
+        const handle = sp.get('handle');
+        toast({ title: `${name} connected via OAuth`, description: handle ? `Authorized as @${handle} — verified by the live ${name} API.` : undefined });
+      } else {
+        toast({ title: `${name} connection failed`, description: sp.get('reason') ?? 'The authorization did not complete.', variant: 'destructive' });
+      }
+    }, 150);
+    setView('accounts');
+    window.history.replaceState({}, '', window.location.pathname);
+    loadAll();
+    return () => clearTimeout(t);
+  }, [loadAll, setView]);
 
   useEffect(() => {
     window.scrollTo({ top: 0 });

@@ -18,6 +18,8 @@ export interface PlatformMeta {
   gradient: string;
   charLimit: number;
   hint: string;
+  /** OAuth connect flow (v1.1.0 "Handshake"): host = nothing to configure (instance domain only) · app = one-time paste of your developer-app client credentials */
+  oauth?: { kind: 'host' | 'app' };
 }
 
 export const PLATFORMS: Record<PlatformId, PlatformMeta> = {
@@ -28,6 +30,7 @@ export const PLATFORMS: Record<PlatformId, PlatformMeta> = {
     gradient: 'from-neutral-800 to-black',
     charLimit: 280,
     hint: 'Short and punchy. Threads well.',
+    oauth: { kind: 'app' },
   },
   instagram: {
     id: 'instagram',
@@ -84,6 +87,7 @@ export const PLATFORMS: Record<PlatformId, PlatformMeta> = {
     gradient: 'from-violet-600 to-indigo-700',
     charLimit: 500,
     hint: 'Federated. Content warnings common.',
+    oauth: { kind: 'host' },
   },
   youtube: {
     id: 'youtube',
@@ -108,6 +112,7 @@ export const PLATFORMS: Record<PlatformId, PlatformMeta> = {
     gradient: 'from-orange-500 to-red-600',
     charLimit: 40000,
     hint: 'Authentic. Reddits hate ads.',
+    oauth: { kind: 'app' },
   },
 };
 

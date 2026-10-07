@@ -66,15 +66,17 @@ Open [http://localhost:3000](http://localhost:3000). The workspace starts **comp
 
 Connecting an account is a **live verification against the platform's own API** — nothing is stored until the platform confirms the credentials work. OpenSocial then pulls your real profile: handle, display name, follower count, profile URL. The number you see in the sidebar is the number the platform reported.
 
+**One-click OAuth (1.1.0 "Handshake").** Mastodon needs nothing but your instance domain — OpenSocial registers itself on the instance on the fly and you authorize on the spot. Reddit and X take a one-time paste of your developer-app credentials (the exact redirect URI is shown and copyable in the dialog), after which connecting is a single click: the token exchange happens server-side and the account lands in your workspace, verified — no more manual refresh-token or access-token dances. Prefer the old way? Every OAuth platform still has a manual-credentials option.
+
 Each platform defines what it needs:
 
 | Platform | You provide | Publishing | Live metric sync |
 |---|---|---|---|
 | **Bluesky** | Handle + [app password](https://bsky.app/settings/app-passwords) | ✅ text + image | ✅ likes, replies, reposts |
-| **Mastodon** | Instance + access token | ✅ text + image | ✅ favourites, boosts, replies |
-| **X** | API key/secret + access tokens (your dev app) | ✅ text + image | ✅ likes, replies, reposts, impressions\* |
+| **Mastodon** | Just your instance (OAuth) — or an access token | ✅ text + image | ✅ favourites, boosts, replies |
+| **X** | Your dev app's consumer keys (OAuth 1.0a) — or manual tokens | ✅ text + image | ✅ likes, replies, reposts, impressions\* |
 | **Threads** | User ID + access token (Meta app) | ✅ text + image | ✅ likes, replies, quotes |
-| **Reddit** | Script-app credentials + refresh token + subreddit | ✅ text (self post) | ✅ score, comments |
+| **Reddit** | Your web-app client keys (OAuth) — or a refresh token + subreddit | ✅ text (self post) | ✅ score, comments |
 | **LinkedIn** | Member token with `w_member_social` | ✅ text | — (restricted API) |
 | **Facebook** | Page ID + page token | ✅ text / photo | — |
 | **Instagram** | Business user ID + token | ✅ image required | — |

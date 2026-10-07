@@ -135,6 +135,7 @@ docs/screenshots/            # what you saw above
 | `bun run db:push` | Apply schema to the database |
 | `bun run db:generate` | Regenerate the Prisma client |
 | `bun run lint` | ESLint |
+| `bun run pack` | Bundle the project into `opensocial.zip` (needs the `zip` CLI) |
 | `bun run db:reset` | Wipe accounts, posts, automations, chat and keys |
 
 ## Roadmap
@@ -150,7 +151,7 @@ docs/screenshots/            # what you saw above
 
 **Why do X / LinkedIn / Meta platforms need my own developer credentials?** Those APIs require a registered application with your account as the owner. You create a free app on the platform's developer portal, paste its keys/tokens into OpenSocial, and the app talks to the API directly — nothing is proxied through a third-party service.
 
-**Where are my API keys stored?** In your local SQLite database, server-side only. The browser only ever receives a masked preview.
+**Where are my API keys stored?** In your local SQLite database (`db/custom.db`), server-side only. The browser only ever receives a masked preview. The database file is gitignored — never commit it or copy it into a repo.
 
 **Which AI provider should I pick?** OpenRouter — the auto free-model routing costs nothing to try.
 

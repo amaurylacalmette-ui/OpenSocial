@@ -1,6 +1,6 @@
 {
   "name": "opensocial",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "One composer, every platform — link accounts, cross-post, schedule, analyze and write with AI.",
   "license": "MIT",
   "repository": {
@@ -15,10 +15,11 @@
     "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
     "start": "NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log",
     "lint": "eslint .",
+    "pack": "zip -r opensocial.zip src docs prisma scripts public package.json tsconfig.json tailwind.config.ts postcss.config.mjs next.config.ts next-env.d.ts eslint.config.mjs components.json README.md LICENSE .gitignore .env.example '*bun.lock*' '*package-lock.json*' -x 'public/opensocial.zip'",
     "db:push": "prisma db push --accept-data-loss",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:reset": "bun scripts/clear-workspace.ts"
+    "db:reset": "node scripts/clear-workspace.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

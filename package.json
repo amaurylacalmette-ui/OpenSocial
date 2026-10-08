@@ -1,19 +1,21 @@
 {
   "name": "opensocial",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "One composer, every platform — link accounts, cross-post, schedule, analyze and write with AI.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/your-username/opensocial.git"
+    "url": "git+https://github.com/amaurylacalmette-ui/OpenSocial.git"
   },
   "engines": {
-    "node": ">=18.18.0"
+    "node": ">=20.9.0"
   },
   "scripts": {
+    "predev": "node scripts/setup-env.mjs && prisma db push --skip-generate",
     "dev": "next dev -p 3000 2>&1 | tee dev.log",
+    "postinstall": "node scripts/setup-env.mjs && prisma generate",
     "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
-    "start": "NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log",
+    "start": "NODE_ENV=production node .next/standalone/server.js 2>&1 | tee server.log",
     "lint": "eslint .",
     "pack": "zip -r opensocial.zip src docs prisma scripts public package.json tsconfig.json tailwind.config.ts postcss.config.mjs next.config.ts next-env.d.ts eslint.config.mjs components.json README.md LICENSE .gitignore .env.example '*bun.lock*' '*package-lock.json*' -x 'public/opensocial.zip'",
     "db:push": "prisma db push --accept-data-loss",

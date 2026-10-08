@@ -49,18 +49,17 @@ Every creator knows the drill: the same post gets retyped five times across five
 ## Quick start
 
 ```bash
-git clone https://github.com/your-username/opensocial.git
-cd opensocial
-cp .env.example .env
-bun install          # or: npm install / pnpm install
-bun run db:generate  # or: npx prisma generate
-bun run db:push      # or: npx prisma db push
-bun run dev          # or: npm run dev
+git clone https://github.com/amaurylacalmette-ui/OpenSocial.git
+cd OpenSocial
+npm install
+npm run dev
 ```
+
+That's the whole setup. `npm install` creates your `.env` and generates the Prisma client automatically, and `npm run dev` creates the SQLite database before the server boots — nothing to copy or configure by hand. The only prerequisites are **git** and **Node.js 20.9+**; Bun and pnpm work just as well (`bun install && bun run dev`).
 
 Open [http://localhost:3000](http://localhost:3000). The workspace starts **completely empty** — no demo accounts, no sample posts, no invented numbers. A getting-started card walks you through the three steps: link an account, publish something, set up an automation.
 
-> Want a clean slate later? **Settings → Clear workspace** wipes everything (AI keys are kept), or run `bun run db:reset`.
+> Want a clean slate later? **Settings → Clear workspace** wipes everything (AI keys are kept), or run `npm run db:reset`.
 
 ## Linking accounts
 
@@ -130,15 +129,17 @@ docs/screenshots/            # what you saw above
 
 ## Scripts
 
+Run the same commands with Bun or pnpm if you prefer — `bun run dev`, `pnpm dev`.
+
 | Command | What it does |
 |---|---|
-| `bun run dev` | Dev server on port 3000 |
-| `bun run build` / `bun run start` | Production build & serve |
-| `bun run db:push` | Apply schema to the database |
-| `bun run db:generate` | Regenerate the Prisma client |
-| `bun run lint` | ESLint |
-| `bun run pack` | Bundle the project into `opensocial.zip` (needs the `zip` CLI) |
-| `bun run db:reset` | Wipe accounts, posts, automations, chat and keys |
+| `npm run dev` | Dev server on port 3000 — also creates `.env` and the database automatically |
+| `npm run build` / `npm run start` | Production build & serve |
+| `npm run db:push` | Apply schema to the database |
+| `npm run db:generate` | Regenerate the Prisma client |
+| `npm run lint` | ESLint |
+| `npm run pack` | Bundle the project into `opensocial.zip` (needs the `zip` CLI) |
+| `npm run db:reset` | Wipe accounts, posts, automations, chat and keys |
 
 ## Roadmap
 

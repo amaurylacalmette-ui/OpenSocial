@@ -23,7 +23,12 @@ export const youtube: PlatformAdapter = {
       followers: ch.statistics?.subscriberCount ? Number(ch.statistics.subscriberCount) : null,
       remoteId: ch.id,
       remoteUrl: custom ? `https://www.youtube.com/@${custom}` : `https://www.youtube.com/channel/${ch.id}`,
-      credentials: { accessToken: creds.accessToken.trim() },
+      credentials: {
+        accessToken: creds.accessToken.trim(),
+        // Persisted when the connect flow was OAuth (offline access) so the
+        // channel data can be re-authenticated later without re-connecting.
+        ...(creds.refreshToken ? { refreshToken: creds.refreshToken.trim() } : {}),
+      },
     };
   },
 

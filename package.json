@@ -1,7 +1,7 @@
 {
   "name": "opensocial",
-  "version": "1.1.2",
-  "description": "One composer, every platform — link accounts, cross-post, schedule, analyze and write with AI.",
+  "version": "1.2.0",
+  "description": "One composer, every platform \u2014 link accounts, cross-post, schedule, analyze and write with AI.",
   "license": "MIT",
   "repository": {
     "type": "git",

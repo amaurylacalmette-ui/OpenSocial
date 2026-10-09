@@ -65,7 +65,7 @@ Open [http://localhost:3000](http://localhost:3000). The workspace starts **comp
 
 Connecting an account is a **live verification against the platform's own API** — nothing is stored until the platform confirms the credentials work. OpenSocial then pulls your real profile: handle, display name, follower count, profile URL. The number you see in the sidebar is the number the platform reported.
 
-**One-click OAuth (1.1.0 "Handshake").** Mastodon needs nothing but your instance domain — OpenSocial registers itself on the instance on the fly and you authorize on the spot. Reddit and X take a one-time paste of your developer-app credentials (the exact redirect URI is shown and copyable in the dialog), after which connecting is a single click: the token exchange happens server-side and the account lands in your workspace, verified — no more manual refresh-token or access-token dances. Prefer the old way? Every OAuth platform still has a manual-credentials option.
+**One-click OAuth.** Seven platforms connect with a real "Login with …" flow — Mastodon needs nothing but your instance domain (OpenSocial registers itself on the fly), and YouTube, LinkedIn, Pinterest, Facebook, Reddit and X take a one-time paste of your developer-app credentials (the exact redirect URI is shown and copyable in the dialog). After that, linking an account is a single click: you're sent to the platform, you sign in, the token exchange happens server-side and the verified account lands in your workspace — no more manual refresh-token or access-token dances. Prefer the old way? Every OAuth platform still has a manual-credentials option.
 
 Each platform defines what it needs:
 
@@ -76,11 +76,11 @@ Each platform defines what it needs:
 | **X** | Your dev app's consumer keys (OAuth 1.0a) — or manual tokens | ✅ text + image | ✅ likes, replies, reposts, impressions\* |
 | **Threads** | User ID + access token (Meta app) | ✅ text + image | ✅ likes, replies, quotes |
 | **Reddit** | Your web-app client keys (OAuth) — or a refresh token + subreddit | ✅ text (self post) | ✅ score, comments |
-| **LinkedIn** | Member token with `w_member_social` | ✅ text | — (restricted API) |
-| **Facebook** | Page ID + page token | ✅ text / photo | — |
+| **YouTube** | Your Google OAuth client (OAuth) — or a manual token | — (no text-post API) | channel + subscriber sync |
+| **LinkedIn** | Your LinkedIn app keys (OAuth) — or a member token | ✅ text | — (restricted API) |
+| **Facebook** | Your Meta app keys (OAuth, Page token resolved for you) — or manual page token | ✅ text / photo | — |
 | **Instagram** | Business user ID + token | ✅ image required | — |
-| **Pinterest** | Token + board ID | ✅ pin (image required) | — |
-| **YouTube** | OAuth token | — (no text-post API) | channel + subscriber sync |
+| **Pinterest** | Your Pinterest app keys (OAuth) — or a token + board ID | ✅ pin (image required) | — |
 | **TikTok** | Token | — (audited Direct Post only) | profile + follower sync |
 
 \* subject to your X API tier.

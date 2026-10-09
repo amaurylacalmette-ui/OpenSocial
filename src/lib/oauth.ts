@@ -1,5 +1,5 @@
 /**
- * OAuth connect flows — v1.1.0 "Handshake".
+ * OAuth connect flows — v1.1.0 "Handshake" + v1.2.0 "Syndication".
  *
  * Dependency-free OAuth for the platforms that allow self-serve connecting:
  *
@@ -11,6 +11,15 @@
  *  - X         → a one-time paste of the consumer key/secret, then the full
  *                OAuth 1.0a request-token → authorize → access-token dance
  *                replaces manual token generation in the dev portal.
+ *  - YouTube   → Google Cloud OAuth client (one-time paste), then one click.
+ *                Issues a refresh token via access_type=offline + consent.
+ *  - LinkedIn  → LinkedIn app client id/secret (one-time paste), one click.
+ *  - Pinterest → Pinterest app id/secret (one-time paste), one click; the
+ *                default board comes from the app config (or is auto-picked
+ *                when the account only has one board).
+ *  - Facebook  → Meta app id/secret (one-time paste); the flow exchanges the
+ *                code for a long-lived user token and resolves the Page token
+ *                via /me/accounts (default Page configurable).
  *
  * Authorization state lives in the Setting table (server-side SQLite) with a
  * 10-minute TTL. Secrets never leave the server; the browser only ever sees
@@ -20,11 +29,17 @@ import crypto from 'node:crypto';
 import { db } from '@/lib/db';
 import { PlatformError } from '@/lib/adapters';
 
-export type OAuthPlatform = 'mastodon' | 'reddit' | 'x';
-export const OAUTH_PLATFORMS: OAuthPlatform[] = ['mastodon', 'reddit', 'x'];
+export type OAuthPlatform = 'mastodon' | 'reddit' | 'x' | 'youtube' | 'linkedin' | 'pinterest' | 'facebook';
+export const OAUTH_PLATFORMS: OAuthPlatform[] = ['mastodon', 'reddit', 'x', 'youtube', 'linkedin', 'pinterest', 'facebook'];
+export type OAuthAppPlatform = Exclude<OAuthPlatform, 'mastodon'>;
+export const OAUTH_APP_PLATFORMS: OAuthAppPlatform[] = ['reddit', 'x', 'youtube', 'linkedin', 'pinterest', 'facebook'];
 
 export function isOAuthPlatform(p: string): p is OAuthPlatform {
   return (OAUTH_PLATFORMS as string[]).includes(p);
+}
+
+export function isOAuthAppPlatform(p: string): p is OAuthAppPlatform {
+  return (OAUTH_APP_PLATFORMS as string[]).includes(p);
 }
 
 const PENDING_TTL_MS = 10 * 60 * 1000;
@@ -49,7 +64,7 @@ export function callbackUrl(req: Request, platform: string): string {
 // Pending-state storage (Setting table, TTL-checked, single-use)
 // ---------------------------------------------------------------------------
 
-interface PendingState {
+export interface PendingState {
   platform: OAuthPlatform;
   redirectTo: string;
   instance?: string;
@@ -83,59 +98,61 @@ async function takePending(state: string): Promise<PendingState> {
 export { takePending };
 
 // ---------------------------------------------------------------------------
-// Developer-app config for reddit / X (stored once, reused for every connect)
+// Developer-app config for the "app" platforms — stored once per platform,
+// reused for every connect. reddit/X keep their legacy shapes; the newer
+// platforms store whatever fields the connect dialog collects.
 // ---------------------------------------------------------------------------
 
 export interface RedditAppConfig { clientId: string; clientSecret: string; subreddit?: string }
 export interface XAppConfig { consumerKey: string; consumerSecret: string }
 
-export async function getRedditAppConfig(): Promise<RedditAppConfig | null> {
-  const row = await db.setting.findUnique({ where: { key: 'oauth:app:reddit' } });
-  return row ? (JSON.parse(row.value) as RedditAppConfig) : null;
+type AppCfg = Record<string, string>;
+
+export async function getOAuthAppConfig(platform: OAuthAppPlatform): Promise<AppCfg | null> {
+  const row = await db.setting.findUnique({ where: { key: `oauth:app:${platform}` } });
+  return row ? (JSON.parse(row.value) as AppCfg) : null;
 }
 
-export async function getXAppConfig(): Promise<XAppConfig | null> {
-  const row = await db.setting.findUnique({ where: { key: 'oauth:app:x' } });
-  return row ? (JSON.parse(row.value) as XAppConfig) : null;
-}
-
-export async function saveRedditAppConfig(cfg: RedditAppConfig): Promise<void> {
+export async function saveOAuthAppConfig(platform: OAuthAppPlatform, cfg: AppCfg): Promise<void> {
   await db.setting.upsert({
-    where: { key: 'oauth:app:reddit' },
+    where: { key: `oauth:app:${platform}` },
     update: { value: JSON.stringify(cfg) },
-    create: { key: 'oauth:app:reddit', value: JSON.stringify(cfg) },
+    create: { key: `oauth:app:${platform}`, value: JSON.stringify(cfg) },
   });
 }
 
-export async function saveXAppConfig(cfg: XAppConfig): Promise<void> {
-  await db.setting.upsert({
-    where: { key: 'oauth:app:x' },
-    update: { value: JSON.stringify(cfg) },
-    create: { key: 'oauth:app:x', value: JSON.stringify(cfg) },
-  });
+export async function deleteOAuthAppConfig(platform: OAuthAppPlatform): Promise<void> {
+  await db.setting.deleteMany({ where: { key: `oauth:app:${platform}` } });
 }
+
+/** Fields that must never be echoed back to the browser, even masked. */
+const SECRET_KEYS = new Set(['clientSecret', 'appSecret', 'consumerSecret', 'accessToken', 'refreshToken', 'pageToken', 'accessSecret']);
 
 function mask(s: string): string {
   if (s.length <= 6) return '••••••';
   return `${s.slice(0, 3)}••••${s.slice(-4)}`;
 }
 
+function publicExtras(cfg: AppCfg): Record<string, string> {
+  return Object.fromEntries(Object.entries(cfg).filter(([k, v]) => v && !SECRET_KEYS.has(k)));
+}
+
 export async function oauthConfigStatus() {
-  const [reddit, x] = await Promise.all([getRedditAppConfig(), getXAppConfig()]);
-  return {
-    mastodon: { configured: true as const, kind: 'host' as const },
-    reddit: {
-      configured: !!reddit,
-      kind: 'app' as const,
-      preview: reddit ? mask(reddit.clientId) : null,
-      subreddit: reddit?.subreddit ?? null,
-    },
-    x: {
-      configured: !!x,
-      kind: 'app' as const,
-      preview: x ? mask(x.consumerKey) : null,
-    },
-  };
+  const status = {
+    mastodon: { configured: true as const, kind: 'host' as const, preview: null as string | null, extras: {} as Record<string, string> },
+  } as Record<string, { configured: boolean; kind: 'host' | 'app'; preview: string | null; extras: Record<string, string> }>;
+  await Promise.all(
+    OAUTH_APP_PLATFORMS.map(async (p) => {
+      const cfg = await getOAuthAppConfig(p);
+      status[p] = {
+        configured: !!cfg,
+        kind: 'app',
+        preview: cfg ? mask(cfg.clientId ?? cfg.appId ?? cfg.consumerKey ?? '') : null,
+        extras: cfg ? publicExtras(cfg) : {},
+      };
+    }),
+  );
+  return status;
 }
 
 // ---------------------------------------------------------------------------
@@ -234,7 +251,7 @@ export async function mastodonCallback(code: string, pending: PendingState): Pro
 // ---------------------------------------------------------------------------
 
 export async function redditStart(redirectUri: string): Promise<string> {
-  const cfg = await getRedditAppConfig();
+  const cfg = await getOAuthAppConfig('reddit');
   if (!cfg) throw new PlatformError('Reddit is not configured yet — paste your web-app client id and secret first.', 400);
   const state = crypto.randomBytes(16).toString('hex');
   await putPending(state, { platform: 'reddit', redirectTo: redirectUri, createdAt: Date.now(), expiresAt: Date.now() + PENDING_TTL_MS });
@@ -249,7 +266,7 @@ export async function redditStart(redirectUri: string): Promise<string> {
 }
 
 export async function redditCallback(code: string, pending: PendingState): Promise<Record<string, string>> {
-  const cfg = await getRedditAppConfig();
+  const cfg = await getOAuthAppConfig('reddit');
   if (!cfg) throw new PlatformError('Reddit app config was removed mid-flow — save it and try again.', 400);
   const res = await fetch('https://www.reddit.com/api/v1/access_token', {
     method: 'POST',
@@ -328,7 +345,7 @@ async function oauth1TokenEndpoint(url: string, header: string): Promise<Record<
 }
 
 export async function xStart(redirectUri: string): Promise<string> {
-  const cfg = await getXAppConfig();
+  const cfg = await getOAuthAppConfig('x');
   if (!cfg) throw new PlatformError('X is not configured yet — paste your developer-app consumer key and secret first.', 400);
   const oauthToken = await oauth1TokenEndpoint(
     'https://api.twitter.com/oauth/request_token',
@@ -356,7 +373,7 @@ export async function xStart(redirectUri: string): Promise<string> {
 }
 
 export async function xCallback(oauthToken: string, verifier: string, pending: PendingState): Promise<Record<string, string>> {
-  const cfg = await getXAppConfig();
+  const cfg = await getOAuthAppConfig('x');
   if (!cfg) throw new PlatformError('X app config was removed mid-flow — save it and try again.', 400);
   const tokens = await oauth1TokenEndpoint(
     'https://api.twitter.com/oauth/access_token',
@@ -381,4 +398,226 @@ export async function resolveXState(oauthToken: string): Promise<string | null> 
   if (!row) return null;
   await db.setting.delete({ where: { key } });
   return row.value;
+}
+
+// ---------------------------------------------------------------------------
+// v1.2.0 "Syndication" — OAuth 2.0 authorization-code flows for YouTube
+// (Google), LinkedIn, Pinterest and Facebook (Meta). All share the same
+// shape: one-time app credentials → authorize URL → server-side token
+// exchange → credentials shaped exactly like the manual path.
+// ---------------------------------------------------------------------------
+
+interface OAuth2TokenResponse {
+  access_token?: string;
+  refresh_token?: string;
+  error?: string;
+  error_description?: string;
+}
+
+async function requireAppConfig(platform: OAuthAppPlatform): Promise<AppCfg> {
+  const cfg = await getOAuthAppConfig(platform);
+  if (!cfg) {
+    throw new PlatformError(`${platform} is not configured yet — open its connect dialog and paste your developer-app credentials first.`, 400);
+  }
+  return cfg;
+}
+
+function buildAuthorizeUrl(endpoint: string, params: Record<string, string>): string {
+  const url = new URL(endpoint);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  return url.toString();
+}
+
+async function newPending(platform: OAuthAppPlatform, redirectUri: string): Promise<string> {
+  const state = crypto.randomBytes(16).toString('hex');
+  await putPending(state, { platform, redirectTo: redirectUri, createdAt: Date.now(), expiresAt: Date.now() + PENDING_TTL_MS });
+  return state;
+}
+
+async function formTokenExchange(platform: string, endpoint: string, headers: Record<string, string>, body: Record<string, string>): Promise<OAuth2TokenResponse> {
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': UA, ...headers },
+    body: new URLSearchParams(body).toString(),
+    signal: AbortSignal.timeout(20_000),
+  });
+  const text = await res.text().catch(() => '');
+  let j: OAuth2TokenResponse = {};
+  try {
+    j = JSON.parse(text) as OAuth2TokenResponse;
+  } catch {
+    // some providers answer with form-encoded bodies on errors
+    j = Object.fromEntries(new URLSearchParams(text)) as OAuth2TokenResponse;
+  }
+  if (!res.ok || j.error) {
+    const detail = (j.error_description ?? j.error ?? text).slice(0, 160);
+    throw new PlatformError(`${platform} rejected the token exchange (HTTP ${res.status}). ${detail}`, res.status);
+  }
+  if (!j.access_token) throw new PlatformError(`${platform} did not return an access token.`);
+  return j;
+}
+
+// --- YouTube (Google) ------------------------------------------------------
+
+export async function youtubeStart(redirectUri: string): Promise<string> {
+  const cfg = await requireAppConfig('youtube');
+  const state = await newPending('youtube', redirectUri);
+  return buildAuthorizeUrl('https://accounts.google.com/o/oauth2/v2/auth', {
+    client_id: cfg.clientId,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: 'https://www.googleapis.com/auth/youtube.readonly',
+    access_type: 'offline', // ask for a refresh token
+    prompt: 'consent', // Google only issues refresh tokens on explicit consent
+    state,
+  });
+}
+
+export async function youtubeCallback(code: string, pending: PendingState): Promise<Record<string, string>> {
+  const cfg = await requireAppConfig('youtube');
+  const j = await formTokenExchange('Google', 'https://oauth2.googleapis.com/token', {}, {
+    code,
+    client_id: cfg.clientId,
+    client_secret: cfg.clientSecret,
+    redirect_uri: pending.redirectTo,
+    grant_type: 'authorization_code',
+  });
+  const credentials: Record<string, string> = { accessToken: j.access_token! };
+  if (j.refresh_token) credentials.refreshToken = j.refresh_token;
+  return credentials;
+}
+
+// --- LinkedIn --------------------------------------------------------------
+
+export async function linkedinStart(redirectUri: string): Promise<string> {
+  const cfg = await requireAppConfig('linkedin');
+  const state = await newPending('linkedin', redirectUri);
+  return buildAuthorizeUrl('https://www.linkedin.com/oauth/v2/authorization', {
+    client_id: cfg.clientId,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: 'openid profile w_member_social',
+    state,
+  });
+}
+
+export async function linkedinCallback(code: string, pending: PendingState): Promise<Record<string, string>> {
+  const cfg = await requireAppConfig('linkedin');
+  const j = await formTokenExchange('LinkedIn', 'https://www.linkedin.com/oauth/v2/accessToken', {}, {
+    code,
+    client_id: cfg.clientId,
+    client_secret: cfg.clientSecret,
+    redirect_uri: pending.redirectTo,
+    grant_type: 'authorization_code',
+  });
+  return { accessToken: j.access_token! };
+}
+
+// --- Pinterest ---------------------------------------------------------------
+
+export async function pinterestStart(redirectUri: string): Promise<string> {
+  const cfg = await requireAppConfig('pinterest');
+  const state = await newPending('pinterest', redirectUri);
+  return buildAuthorizeUrl('https://www.pinterest.com/oauth/', {
+    client_id: cfg.clientId,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: 'user_accounts:read,boards:read,pins:write',
+    state,
+  });
+}
+
+export async function pinterestCallback(code: string, pending: PendingState): Promise<Record<string, string>> {
+  const cfg = await requireAppConfig('pinterest');
+  const j = await formTokenExchange('Pinterest', 'https://api.pinterest.com/v5/oauth/token', {
+    Authorization: `Basic ${Buffer.from(`${cfg.clientId}:${cfg.clientSecret}`).toString('base64')}`,
+  }, {
+    code,
+    redirect_uri: pending.redirectTo,
+    grant_type: 'authorization_code',
+  });
+  // The adapter needs a board to pin into: use the configured default, or
+  // auto-pick when the account has exactly one board.
+  const boardsRes = await fetch('https://api.pinterest.com/v5/boards', {
+    headers: { Authorization: `Bearer ${j.access_token}`, 'User-Agent': UA },
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!boardsRes.ok) {
+    throw new PlatformError(`Could not list your Pinterest boards (HTTP ${boardsRes.status}) — check that the boards:read scope is approved.`, boardsRes.status);
+  }
+  const boards = (await boardsRes.json()) as { items?: { id: string; name?: string; url?: string }[] };
+  const items = boards.items ?? [];
+  const wanted = cfg.defaultBoard?.trim();
+  let boardId: string | undefined;
+  if (wanted) {
+    const found = items.find((b) => b.id === wanted || b.url?.endsWith(`/${wanted}`));
+    if (!found) throw new PlatformError(`Board "${wanted}" (your default board) was not found on this Pinterest account.`);
+    boardId = found.id;
+  } else if (items.length === 1) {
+    boardId = items[0].id;
+  } else {
+    throw new PlatformError('Pick a default board first: open the Pinterest connect dialog → Edit app → set "Default board", then authorize again.');
+  }
+  const credentials: Record<string, string> = { accessToken: j.access_token!, boardId };
+  if (j.refresh_token) credentials.refreshToken = j.refresh_token;
+  return credentials;
+}
+
+// --- Facebook (Meta Pages) ---------------------------------------------------
+
+export async function facebookStart(redirectUri: string): Promise<string> {
+  const cfg = await requireAppConfig('facebook');
+  const state = await newPending('facebook', redirectUri);
+  return buildAuthorizeUrl('https://www.facebook.com/v21.0/dialog/oauth', {
+    client_id: cfg.appId,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: 'pages_show_list,pages_read_engagement,pages_manage_pages,pages_manage_posts',
+    state,
+  });
+}
+
+export async function facebookCallback(code: string, pending: PendingState): Promise<Record<string, string>> {
+  const cfg = await requireAppConfig('facebook');
+  const GRAPH = 'https://graph.facebook.com/v21.0';
+  const qs = (params: Record<string, string>) => new URLSearchParams(params).toString();
+
+  // 1) code → short-lived user token
+  const short = await formTokenExchange('Facebook', `${GRAPH}/oauth/access_token`, {}, {
+    code,
+    client_id: cfg.appId,
+    client_secret: cfg.appSecret,
+    redirect_uri: pending.redirectTo,
+  });
+  // 2) short-lived → long-lived user token
+  const long = await formTokenExchange('Facebook', `${GRAPH}/oauth/access_token`, {}, {
+    grant_type: 'fb_exchange_token',
+    client_id: cfg.appId,
+    client_secret: cfg.appSecret,
+    fb_exchange_token: short.access_token!,
+  });
+  // 3) resolve the Page token — page tokens from a long-lived user token never expire
+  const pagesRes = await fetch(`${GRAPH}/me/accounts?${qs({ fields: 'id,name,access_token', access_token: long.access_token! })}`, {
+    headers: { 'User-Agent': UA },
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!pagesRes.ok) {
+    const detail = await pagesRes.text().catch(() => '');
+    throw new PlatformError(`Could not list your Facebook Pages (HTTP ${pagesRes.status}). ${detail.slice(0, 160)}`, pagesRes.status);
+  }
+  const pages = (await pagesRes.json()) as { data?: { id: string; name?: string; access_token: string }[] };
+  const items = pages.data ?? [];
+  const wanted = cfg.defaultPageId?.trim();
+  let page: { id: string; access_token: string; name?: string } | undefined;
+  if (wanted) {
+    page = items.find((p) => p.id === wanted);
+    if (!page) throw new PlatformError(`Page ID ${wanted} (your default Page) is not managed by this Facebook account — or the app lacks the Pages permissions.`);
+  } else if (items.length === 1) {
+    page = items[0];
+  } else if (items.length === 0) {
+    throw new PlatformError('This Facebook account manages no Pages — OpenSocial publishes to Pages, not personal profiles.');
+  } else {
+    throw new PlatformError(`You manage ${items.length} Pages — pick a default one first: open the Facebook connect dialog → Edit app → set "Default Page ID", then authorize again.`);
+  }
+  return { pageId: page.id, pageToken: page.access_token };
 }

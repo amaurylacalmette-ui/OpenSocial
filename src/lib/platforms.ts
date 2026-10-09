@@ -55,6 +55,7 @@ export const PLATFORMS: Record<PlatformId, PlatformMeta> = {
     gradient: 'from-sky-700 to-sky-900',
     charLimit: 3000,
     hint: 'Professional tone performs best.',
+    oauth: { kind: 'app' },
   },
   facebook: {
     id: 'facebook',
@@ -63,6 +64,7 @@ export const PLATFORMS: Record<PlatformId, PlatformMeta> = {
     gradient: 'from-blue-600 to-blue-800',
     charLimit: 63206,
     hint: 'Community and link friendly.',
+    oauth: { kind: 'app' },
   },
   threads: {
     id: 'threads',
@@ -96,6 +98,7 @@ export const PLATFORMS: Record<PlatformId, PlatformMeta> = {
     gradient: 'from-red-600 to-rose-700',
     charLimit: 5000,
     hint: 'Titles + descriptions. SEO matters.',
+    oauth: { kind: 'app' },
   },
   pinterest: {
     id: 'pinterest',
@@ -104,6 +107,7 @@ export const PLATFORMS: Record<PlatformId, PlatformMeta> = {
     gradient: 'from-rose-600 to-red-700',
     charLimit: 500,
     hint: 'Evergreen how-to content.',
+    oauth: { kind: 'app' },
   },
   reddit: {
     id: 'reddit',
@@ -228,6 +232,92 @@ export const PLATFORM_AUTH: Record<PlatformId, PlatformAuth> = {
 
 export function platformAuth(id: string): PlatformAuth | null {
   return PLATFORM_AUTH[id as PlatformId] ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// OAuth app setup (v1.2.0 "Syndication") — what the user pastes once per
+// platform so every connect afterwards is a single authorization click.
+// ---------------------------------------------------------------------------
+
+export interface OAuthAppField {
+  key: string;
+  label: string;
+  placeholder: string;
+  secret?: boolean;
+  optional?: boolean;
+  help?: string;
+}
+
+export interface OAuthAppSetup {
+  fields: OAuthAppField[];
+  /** Shown in the connect dialog: where to create the app and what to enable. */
+  instructions: string;
+  consoleUrl: string;
+  consoleLabel: string;
+}
+
+export const OAUTH_APP_SETUP: Partial<Record<PlatformId, OAuthAppSetup>> = {
+  reddit: {
+    fields: [
+      { key: 'clientId', label: 'Client ID', placeholder: 'From your reddit web app' },
+      { key: 'clientSecret', label: 'Client secret', placeholder: 'Web app secret', secret: true },
+      { key: 'subreddit', label: 'Default subreddit (optional)', placeholder: 'e.g. sideproject', optional: true, help: 'Where text posts get submitted — without r/. You can override per post later.' },
+    ],
+    instructions: 'Create a "web app" (not script app) at reddit.com/prefs/apps with this exact redirect URI, then paste its id and secret here.',
+    consoleUrl: 'https://www.reddit.com/prefs/apps',
+    consoleLabel: 'reddit.com/prefs/apps',
+  },
+  x: {
+    fields: [
+      { key: 'consumerKey', label: 'API key (consumer key)', placeholder: 'From your X developer app' },
+      { key: 'consumerSecret', label: 'API key secret', placeholder: 'Consumer secret', secret: true },
+    ],
+    instructions: 'In the X developer portal, enable OAuth 1.0a for your app and set this exact callback URL, then paste the consumer keys here.',
+    consoleUrl: 'https://developer.x.com/en/portal/dashboard',
+    consoleLabel: 'developer.x.com',
+  },
+  youtube: {
+    fields: [
+      { key: 'clientId', label: 'Client ID', placeholder: '…apps.googleusercontent.com' },
+      { key: 'clientSecret', label: 'Client secret', placeholder: 'From your Google OAuth client', secret: true },
+    ],
+    instructions: 'In Google Cloud Console: enable the YouTube Data API v3, create an OAuth client ID (type: Web application) with this exact redirect URI, then paste the client id and secret here.',
+    consoleUrl: 'https://console.cloud.google.com/apis/credentials',
+    consoleLabel: 'console.cloud.google.com',
+  },
+  linkedin: {
+    fields: [
+      { key: 'clientId', label: 'Client ID', placeholder: 'From your LinkedIn app' },
+      { key: 'clientSecret', label: 'Client secret', placeholder: 'From your LinkedIn app', secret: true },
+    ],
+    instructions: 'On LinkedIn Developers: create an app, add the products "Sign In with LinkedIn using OpenID Connect" and "Share on LinkedIn", set this exact redirect URL, then paste the client id and secret here.',
+    consoleUrl: 'https://www.linkedin.com/developers/apps',
+    consoleLabel: 'linkedin.com/developers',
+  },
+  pinterest: {
+    fields: [
+      { key: 'clientId', label: 'App ID', placeholder: 'From your Pinterest connect app' },
+      { key: 'clientSecret', label: 'App secret', placeholder: 'From your Pinterest connect app', secret: true },
+      { key: 'defaultBoard', label: 'Default board (optional)', placeholder: 'Board id or URL slug', optional: true, help: 'Where pins get published. If empty, your only board is used automatically; with multiple boards you must pick one here.' },
+    ],
+    instructions: 'On Pinterest for Developers: create a connect app, add this exact redirect URI, and request the scopes user_accounts:read, boards:read, pins:write — then paste the app id and secret here.',
+    consoleUrl: 'https://developers.pinterest.com/apps/',
+    consoleLabel: 'developers.pinterest.com',
+  },
+  facebook: {
+    fields: [
+      { key: 'appId', label: 'App ID', placeholder: 'From your Meta app' },
+      { key: 'appSecret', label: 'App secret', placeholder: 'From your Meta app', secret: true },
+      { key: 'defaultPageId', label: 'Default Page ID (optional)', placeholder: 'Numeric page id', optional: true, help: 'OpenSocial publishes to Pages. With multiple Pages you must pick one here; a single Page is used automatically.' },
+    ],
+    instructions: 'On Meta for Developers: create a Business-type app, add Facebook Login with this exact redirect URI, and give your Facebook account a role on the app (App settings → Roles) — then paste the app id and secret here.',
+    consoleUrl: 'https://developers.facebook.com/apps/',
+    consoleLabel: 'developers.facebook.com',
+  },
+};
+
+export function oauthAppSetup(id: string): OAuthAppSetup | null {
+  return OAUTH_APP_SETUP[id as PlatformId] ?? null;
 }
 
 export function platformName(id: string): string {

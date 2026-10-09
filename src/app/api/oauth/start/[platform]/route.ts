@@ -1,7 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isOAuthPlatform, mastodonStart, redditStart, xStart, originOf, callbackUrl } from '@/lib/oauth';
+import {
+  isOAuthPlatform,
+  mastodonStart,
+  redditStart,
+  xStart,
+  youtubeStart,
+  linkedinStart,
+  pinterestStart,
+  facebookStart,
+  originOf,
+  callbackUrl,
+  type OAuthAppPlatform,
+} from '@/lib/oauth';
 
 export const dynamic = 'force-dynamic';
+
+const STARTERS: Record<Exclude<OAuthAppPlatform, never>, (cb: string) => Promise<string>> = {
+  reddit: redditStart,
+  x: xStart,
+  youtube: youtubeStart,
+  linkedin: linkedinStart,
+  pinterest: pinterestStart,
+  facebook: facebookStart,
+};
 
 function backToApp(req: Request, params: Record<string, string>): NextResponse {
   const url = new URL(originOf(req));
@@ -22,10 +43,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ plat
     if (platform === 'mastodon') {
       const instance = new URL(req.url).searchParams.get('instance') ?? '';
       authorizeUrl = await mastodonStart(instance, cb);
-    } else if (platform === 'reddit') {
-      authorizeUrl = await redditStart(cb);
     } else {
-      authorizeUrl = await xStart(cb);
+      authorizeUrl = await STARTERS[platform](cb);
     }
     return NextResponse.redirect(authorizeUrl);
   } catch (e) {

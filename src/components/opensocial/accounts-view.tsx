@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/hooks/use-toast';
-import { PLATFORM_LIST, PLATFORMS, PLATFORM_AUTH, type PlatformId, type AuthField } from '@/lib/platforms';
+import { PLATFORM_LIST, PLATFORMS, PLATFORM_AUTH, oauthAppSetup, type PlatformId, type AuthField } from '@/lib/platforms';
 import { PlatformAvatar, PlatformIcon } from './platform-icon';
 import { CheckCircle2, ExternalLink, Eye, EyeOff, Loader2, Plus, RefreshCw, ShieldCheck, Users, Zap, Link2, AlertTriangle, Info, Copy, Check, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -111,7 +111,7 @@ export function AccountsView() {
                   p.oauth ? (
                     <div className="space-y-1.5">
                       <Button size="sm" className="h-8 w-full gap-1.5 rounded-lg text-[12.5px] bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white hover:from-violet-500 hover:to-fuchsia-500" onClick={() => setOauthPlatform(p.id)}>
-                        <Link2 className="h-3.5 w-3.5" /> Connect
+                        <Link2 className="h-3.5 w-3.5" /> Login with {p.name}
                       </Button>
                       <Button variant="outline" size="sm" className="h-8 w-full gap-1.5 rounded-lg text-[11.5px] text-muted-foreground" onClick={() => setConnectPlatform(p.id)}>
                         Manual credentials
@@ -397,11 +397,13 @@ function FieldRow({ field, value, revealed, onChange, onToggleReveal, onEnter }:
   );
 }
 
-interface OAuthConfigStatus {
-  mastodon: { configured: true; kind: 'host' };
-  reddit: { configured: boolean; kind: 'app'; preview: string | null; subreddit: string | null };
-  x: { configured: boolean; kind: 'app'; preview: string | null };
+interface OAuthConfigStatusEntry {
+  configured: boolean;
+  kind: 'host' | 'app';
+  preview: string | null;
+  extras: Record<string, string>;
 }
+type OAuthConfigStatus = Record<string, OAuthConfigStatusEntry>;
 
 function OAuthDialog({ platform, onClose, onManual }: {
   platform: PlatformId | null;
@@ -419,7 +421,8 @@ function OAuthDialog({ platform, onClose, onManual }: {
   const [error, setError] = useState('');
 
   const meta = platform ? PLATFORMS[platform] : null;
-  const isApp = platform === 'reddit' || platform === 'x';
+  const isApp = platform !== null && platform !== 'mastodon';
+  const setup = platform ? oauthAppSetup(platform) : null;
 
   useEffect(() => {
     if (!platform) return;
@@ -430,7 +433,7 @@ function OAuthDialog({ platform, onClose, onManual }: {
     setError('');
     setCopied(false);
     setRedirectUri(`${window.location.origin}/api/oauth/callback/${platform}`);
-    if (platform === 'reddit' || platform === 'x') {
+    if (platform !== 'mastodon') {
       fetch('/api/oauth/config')
         .then((r) => r.json())
         .then(setConfig)
@@ -443,8 +446,8 @@ function OAuthDialog({ platform, onClose, onManual }: {
   }
 
   async function saveAndContinue() {
-    if (!platform) return;
-    const required = platform === 'reddit' ? ['clientId', 'clientSecret'] : ['consumerKey', 'consumerSecret'];
+    if (!platform || !setup) return;
+    const required = setup.fields.filter((f) => !f.optional).map((f) => f.key);
     const missing = required.filter((k) => !(values[k] ?? '').trim());
     if (missing.length > 0) {
       setError('Fill in every required field first.');
@@ -490,7 +493,8 @@ function OAuthDialog({ platform, onClose, onManual }: {
     });
   }
 
-  const configured = platform === 'reddit' ? !!config?.reddit.configured : platform === 'x' ? !!config?.x.configured : true;
+  const platformStatus = platform && config ? config[platform] : undefined;
+  const configured = !isApp || !!platformStatus?.configured;
   const showForm = platform === 'mastodon' || !configured || editing;
 
   return (
@@ -506,8 +510,7 @@ function OAuthDialog({ platform, onClose, onManual }: {
                   <DialogDescription className="text-left">
                     {platform === 'mastodon'
                       ? 'OpenSocial registers itself on your instance on the fly — you just authorize it and come right back.'
-                      : 'One-time app setup, then every future connect is a single authorization click.'}
-                  </DialogDescription>
+                      : 'One-time app setup, then every future connect is a single authorization click.'}                  </DialogDescription>
                 </div>
               </div>
             </DialogHeader>
@@ -535,26 +538,25 @@ function OAuthDialog({ platform, onClose, onManual }: {
                 <div className="flex items-start gap-2 rounded-lg bg-emerald-500/10 p-2.5 text-[12px] leading-relaxed text-emerald-700 dark:text-emerald-400">
                   <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <span>
-                    App connected{config ? ` — ${platform === 'reddit' ? `client ${config.reddit.preview}${config.reddit.subreddit ? ` · r/${config.reddit.subreddit}` : ''}` : `key ${config.x.preview}`}` : ''}. Continue to authorize your account.
+                    App connected{platformStatus ? ` — ${platformStatus.preview}${Object.keys(platformStatus.extras).length > 0 ? ` · ${Object.entries(platformStatus.extras).map(([k, v]) => (k === 'subreddit' ? `r/${v}` : v)).join(' · ')}` : ''}` : ''}. Continue to authorize your account.
                   </span>
                 </div>
               </div>
             )}
 
-            {isApp && showForm && (
+            {isApp && showForm && setup && (
               <div className="max-h-[46vh] space-y-3 overflow-y-auto pr-1">
-                {platform === 'reddit' ? (
-                  <>
-                    <FieldRow field={{ key: 'clientId', label: 'Client ID', placeholder: 'From your reddit web app' }} value={values.clientId ?? ''} revealed={!!revealed.clientId} onChange={(v) => setField('clientId', v)} onToggleReveal={() => setRevealed((p) => ({ ...p, clientId: !p.clientId }))} onEnter={saveAndContinue} />
-                    <FieldRow field={{ key: 'clientSecret', label: 'Client secret', placeholder: 'Web app secret', secret: true }} value={values.clientSecret ?? ''} revealed={!!revealed.clientSecret} onChange={(v) => setField('clientSecret', v)} onToggleReveal={() => setRevealed((p) => ({ ...p, clientSecret: !p.clientSecret }))} onEnter={saveAndContinue} />
-                    <FieldRow field={{ key: 'subreddit', label: 'Default subreddit (optional)', placeholder: 'e.g. sideproject', help: 'Where text posts get submitted — without r/. You can override per post later.' }} value={values.subreddit ?? ''} revealed onChange={(v) => setField('subreddit', v)} onToggleReveal={() => {}} onEnter={saveAndContinue} />
-                  </>
-                ) : (
-                  <>
-                    <FieldRow field={{ key: 'consumerKey', label: 'API key (consumer key)', placeholder: 'From your X developer app' }} value={values.consumerKey ?? ''} revealed={!!revealed.consumerKey} onChange={(v) => setField('consumerKey', v)} onToggleReveal={() => setRevealed((p) => ({ ...p, consumerKey: !p.consumerKey }))} onEnter={saveAndContinue} />
-                    <FieldRow field={{ key: 'consumerSecret', label: 'API key secret', placeholder: 'Consumer secret', secret: true }} value={values.consumerSecret ?? ''} revealed={!!revealed.consumerSecret} onChange={(v) => setField('consumerSecret', v)} onToggleReveal={() => setRevealed((p) => ({ ...p, consumerSecret: !p.consumerSecret }))} onEnter={saveAndContinue} />
-                  </>
-                )}
+                {setup.fields.map((f) => (
+                  <FieldRow
+                    key={f.key}
+                    field={{ key: f.key, label: f.label, placeholder: f.placeholder, secret: f.secret, help: f.help }}
+                    value={values[f.key] ?? ''}
+                    revealed={f.secret ? !!revealed[f.key] : true}
+                    onChange={(v) => setField(f.key, v)}
+                    onToggleReveal={() => f.secret && setRevealed((p) => ({ ...p, [f.key]: !p[f.key] }))}
+                    onEnter={saveAndContinue}
+                  />
+                ))}
 
                 <div className="space-y-1">
                   <Label className="text-[12.5px]">Redirect URI</Label>
@@ -565,9 +567,10 @@ function OAuthDialog({ platform, onClose, onManual }: {
                     </Button>
                   </div>
                   <p className="text-[11px] leading-relaxed text-muted-foreground">
-                    {platform === 'reddit'
-                      ? 'Create a "web app" (not script app) at reddit.com/prefs/apps with this exact redirect URI, then paste its id and secret here.'
-                      : 'In the X developer portal, enable OAuth 1.0a for your app and set this exact callback URL, then paste the consumer keys here.'}
+                    {setup.instructions}{' '}
+                    <a href={setup.consoleUrl} target="_blank" rel="noreferrer" className="text-violet-600 underline-offset-2 hover:underline dark:text-violet-400">
+                      {setup.consoleLabel}
+                    </a>
                   </p>
                 </div>
               </div>

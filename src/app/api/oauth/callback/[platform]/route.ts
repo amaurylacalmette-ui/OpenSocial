@@ -4,13 +4,29 @@ import {
   mastodonCallback,
   redditCallback,
   xCallback,
+  youtubeCallback,
+  linkedinCallback,
+  pinterestCallback,
+  facebookCallback,
   resolveXState,
   takePending,
   originOf,
+  type OAuthAppPlatform,
+  type PendingState,
 } from '@/lib/oauth';
 import { createVerifiedAccount } from '@/lib/account-service';
 
 export const dynamic = 'force-dynamic';
+
+type CodeCallback = (code: string, pending: PendingState) => Promise<Record<string, string>>;
+
+const CODE_CALLBACKS: Record<Exclude<OAuthAppPlatform, 'x'>, CodeCallback> = {
+  reddit: redditCallback,
+  youtube: youtubeCallback,
+  linkedin: linkedinCallback,
+  pinterest: pinterestCallback,
+  facebook: facebookCallback,
+};
 
 function backToApp(req: Request, params: Record<string, string>): NextResponse {
   const url = new URL(originOf(req));
@@ -54,9 +70,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ plat
     if (pending.platform !== platform) throw new Error('This authorization belongs to a different platform.');
 
     const credentials =
-      platform === 'mastodon'
-        ? await mastodonCallback(code, pending)
-        : await redditCallback(code, pending);
+      platform === 'mastodon' ? await mastodonCallback(code, pending) : await CODE_CALLBACKS[platform](code, pending);
     return await finish(req, platform, credentials);
   } catch (e) {
     const reason = (e as Error).message.slice(0, 300);

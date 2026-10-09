@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { oauthConfigStatus, saveRedditAppConfig, saveXAppConfig, isOAuthPlatform } from '@/lib/oauth';
+import { oauthConfigStatus, saveOAuthAppConfig, deleteOAuthAppConfig, isOAuthAppPlatform, type OAuthAppPlatform } from '@/lib/oauth';
+import { oauthAppSetup } from '@/lib/platforms';
 
 export async function GET() {
   return NextResponse.json(await oauthConfigStatus());
@@ -8,27 +9,31 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
-  const { platform, clientId, clientSecret, consumerKey, consumerSecret, subreddit } = (body ?? {}) as Record<string, string | undefined>;
+  const { platform, ...rest } = (body ?? {}) as Record<string, string | undefined>;
 
-  if (!platform || !isOAuthPlatform(platform)) {
+  if (!platform || !isOAuthAppPlatform(platform)) {
+    return NextResponse.json({ error: platform === 'mastodon' ? 'Mastodon needs no app config — only the instance domain.' : 'Unknown OAuth platform' }, { status: 400 });
+  }
+
+  const setup = oauthAppSetup(platform);
+  if (!setup) {
     return NextResponse.json({ error: 'Unknown OAuth platform' }, { status: 400 });
   }
-  if (platform === 'mastodon') {
-    return NextResponse.json({ error: 'Mastodon needs no app config — only the instance domain.' }, { status: 400 });
+
+  // Collect + validate the fields defined for this platform.
+  const cfg: Record<string, string> = {};
+  const missing: string[] = [];
+  for (const field of setup.fields) {
+    const v = (rest[field.key] ?? '').toString().trim();
+    if (!v && !field.optional) missing.push(field.label);
+    if (v) cfg[field.key] = v;
+  }
+  if (missing.length > 0) {
+    return NextResponse.json({ error: `Required: ${missing.join(', ')}.` }, { status: 400 });
   }
 
   try {
-    if (platform === 'reddit') {
-      if (!clientId?.trim() || !clientSecret?.trim()) {
-        return NextResponse.json({ error: 'Both the client id and the client secret are required.' }, { status: 400 });
-      }
-      await saveRedditAppConfig({ clientId: clientId.trim(), clientSecret: clientSecret.trim(), subreddit: subreddit?.trim() || undefined });
-    } else {
-      if (!consumerKey?.trim() || !consumerSecret?.trim()) {
-        return NextResponse.json({ error: 'Both the consumer key and the consumer secret are required.' }, { status: 400 });
-      }
-      await saveXAppConfig({ consumerKey: consumerKey.trim(), consumerSecret: consumerSecret.trim() });
-    }
+    await saveOAuthAppConfig(platform as OAuthAppPlatform, cfg);
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
@@ -38,10 +43,9 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   const platform = new URL(req.url).searchParams.get('platform');
-  if (!platform || !isOAuthPlatform(platform)) {
+  if (!platform || !isOAuthAppPlatform(platform)) {
     return NextResponse.json({ error: 'Unknown OAuth platform' }, { status: 400 });
   }
-  const key = platform === 'reddit' ? 'oauth:app:reddit' : platform === 'x' ? 'oauth:app:x' : null;
-  if (key) await db.setting.deleteMany({ where: { key } });
+  await deleteOAuthAppConfig(platform as OAuthAppPlatform);
   return NextResponse.json(await oauthConfigStatus());
 }

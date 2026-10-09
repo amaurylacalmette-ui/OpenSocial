@@ -55,7 +55,7 @@ npm install
 npm run dev
 ```
 
-That's the whole setup. `npm install` creates your `.env` and generates the Prisma client automatically, and `npm run dev` creates the SQLite database before the server boots — nothing to copy or configure by hand. The only prerequisites are **git** and **Node.js 20.9+**; Bun and pnpm work just as well (`bun install && bun run dev`).
+That's the whole setup. `npm install` creates your `.env` and generates the Prisma client automatically, and `npm run dev` creates the SQLite database before the server boots — nothing to copy or configure by hand. Every script is plain Node/Next, so **Windows, macOS and Linux all work out of the box** (no Unix shell needed). The only prerequisites are **git** and **Node.js 20.9+**; Bun and pnpm work just as well (`bun install && bun run dev`).
 
 Open [http://localhost:3000](http://localhost:3000). The workspace starts **completely empty** — no demo accounts, no sample posts, no invented numbers. A getting-started card walks you through the three steps: link an account, publish something, set up an automation.
 
